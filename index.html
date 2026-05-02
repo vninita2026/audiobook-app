@@ -361,9 +361,14 @@
     }
 
     elements.playBtn.addEventListener('click', () => {
+      const synth = window.speechSynthesis;
+      
       if (isPlaying) {
-        window.speechSynthesis.pause();
+        synth.pause();
         isPlaying = false;
+      } else if (synth.paused) {
+        synth.resume();
+        isPlaying = true;
       } else {
         speakChunk(currentChunkIndex);
       }
@@ -446,12 +451,14 @@
           
           if (targetChunk !== -1) {
             currentChunkIndex = targetChunk;
+            isPlaying = false;
             updateProgress();
             window.speechSynthesis.cancel();
             setTimeout(() => {
               speakChunk(currentChunkIndex);
-            }, 50);
+            }, 100);
             elements.searchInput.value = '';
+            alert('Encontrado: "' + searchTerm + '"\n¡Comenzando a leer!');
           }
         } else {
           alert('No se encontró: "' + searchTerm + '"');
