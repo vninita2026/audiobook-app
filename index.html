@@ -63,7 +63,6 @@
 </head>
 <body>
   <div class="container">
-    <!-- Library Section -->
     <div id="librarySection">
       <div class="header">
         <h1>Audiobook Library</h1>
@@ -83,7 +82,6 @@
       </div>
     </div>
 
-    <!-- Player Section -->
     <div id="playerSection" class="hidden">
       <div style="margin-bottom: 16px;">
         <button id="backToLibrary" class="btn-change">← Volver a la biblioteca</button>
@@ -152,13 +150,13 @@
   <script>
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    let books = {}; // { bookId: { name, text, chunks, currentChunkIndex } }
+    // State
+    let books = {};
     let currentBookId = null;
     let pdfText = '';
     let chunks = [];
     let currentChunkIndex = 0;
-    let isSpeaking = false;
-    let utterance = null;
+    let isPlaying = false;
 
     const elements = {
       librarySection: document.getElementById('librarySection'),
@@ -183,26 +181,22 @@
       totalChars: document.getElementById('totalChars')
     };
 
-    // Load books from localStorage
     function loadBooks() {
       const saved = localStorage.getItem('audiobookLibrary');
       if (saved) {
         try {
           books = JSON.parse(saved);
         } catch (e) {
-          console.error('Error loading books:', e);
           books = {};
         }
       }
       updateBooksList();
     }
 
-    // Save books to localStorage
     function saveBooks() {
       localStorage.setItem('audiobookLibrary', JSON.stringify(books));
     }
 
-    // Update books list UI
     function updateBooksList() {
       elements.booksList.innerHTML = '';
       if (Object.keys(books).length === 0) {
@@ -229,7 +223,6 @@
       });
     }
 
-    // Select a book to read
     window.selectBook = function(bookId) {
       if (!books[bookId]) return;
       
@@ -237,24 +230,26 @@
       const book = books[bookId];
       pdfText = book.text;
       chunks = book.chunks;
-      currentChunkIndex = book.currentChunkIndex;
+      currentChunkIndex = book.currentChunkIndex || 0;
+      isPlaying = false;
 
       elements.fileName.textContent = book.name;
       elements.preview.textContent = pdfText.substring(0, 500) + (pdfText.length > 500 ? '...' : '');
       elements.totalChars.textContent = pdfText.length.toLocaleString();
       updateProgress();
+      updatePlayButton();
 
       elements.librarySection.classList.add('hidden');
       elements.playerSection.classList.remove('hidden');
     };
 
-    // Delete a book
     window.deleteBook = function(bookId) {
       if (confirm('¿Borrar este libro?')) {
         delete books[bookId];
         saveBooks();
         if (currentBookId === bookId) {
           currentBookId = null;
+          window.speechSynthesis.cancel();
           elements.playerSection.classList.add('hidden');
           elements.librarySection.classList.remove('hidden');
         }
@@ -262,7 +257,6 @@
       }
     };
 
-    // Create chunks
     function createChunks(text) {
       const CHUNK_SIZE = 25000;
       const chunkArray = [];
@@ -282,7 +276,6 @@
       return chunkArray;
     }
 
-    // Handle PDF upload
     elements.pdfInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -312,47 +305,39 @@
         selectBook(bookId);
         elements.pdfInput.value = '';
       } catch (error) {
-        console.error('Error:', error);
         alert('Error cargando PDF');
       }
     });
 
     function speakChunk(chunkIndex) {
       if (chunks.length === 0 || chunkIndex >= chunks.length) {
-        isSpeaking = false;
+        isPlaying = false;
         updatePlayButton();
         return;
       }
 
-      utterance = new SpeechSynthesisUtterance(chunks[chunkIndex]);
+      const utterance = new SpeechSynthesisUtterance(chunks[chunkIndex]);
       utterance.rate = parseFloat(elements.speedSlider.value);
       utterance.volume = parseFloat(elements.volumeSlider.value);
 
       utterance.onstart = () => {
-        isSpeaking = true;
+        isPlaying = true;
         currentChunkIndex = chunkIndex;
         updateProgress();
         updatePlayButton();
       };
 
       utterance.onend = () => {
-        if (chunkIndex < chunks.length - 1) {
+        if (chunkIndex < chunks.length - 1 && isPlaying) {
           setTimeout(() => speakChunk(chunkIndex + 1), 100);
         } else {
-          isSpeaking = false;
-          currentChunkIndex = 0;
-          updateProgress();
+          isPlaying = false;
           updatePlayButton();
         }
         if (currentBookId && books[currentBookId]) {
           books[currentBookId].currentChunkIndex = currentChunkIndex;
           saveBooks();
         }
-      };
-
-      utterance.onpause = () => {
-        isSpeaking = false;
-        updatePlayButton();
       };
 
       window.speechSynthesis.cancel();
@@ -372,30 +357,23 @@
     }
 
     function updatePlayButton() {
-      elements.playBtn.textContent = isSpeaking ? 'PAUSA' : 'PLAY';
+      elements.playBtn.textContent = isPlaying ? 'PAUSA' : 'PLAY';
     }
 
     elements.playBtn.addEventListener('click', () => {
-      if (isSpeaking) {
+      if (isPlaying) {
         window.speechSynthesis.pause();
-        isSpeaking = false;
-        updatePlayButton();
+        isPlaying = false;
       } else {
-        const synth = window.speechSynthesis;
-        if (synth.paused) {
-          synth.resume();
-          isSpeaking = true;
-        } else {
-          speakChunk(currentChunkIndex);
-        }
-        updatePlayButton();
+        speakChunk(currentChunkIndex);
       }
+      updatePlayButton();
     });
 
     elements.skipBack.addEventListener('click', () => {
       currentChunkIndex = Math.max(0, currentChunkIndex - 1);
       updateProgress();
-      if (isSpeaking) {
+      if (isPlaying) {
         window.speechSynthesis.cancel();
         setTimeout(() => speakChunk(currentChunkIndex), 100);
       }
@@ -404,7 +382,7 @@
     elements.skipForward.addEventListener('click', () => {
       currentChunkIndex = Math.min(chunks.length - 1, currentChunkIndex + 1);
       updateProgress();
-      if (isSpeaking) {
+      if (isPlaying) {
         window.speechSynthesis.cancel();
         setTimeout(() => speakChunk(currentChunkIndex), 100);
       }
@@ -419,7 +397,7 @@
       pdfText = '';
       chunks = [];
       currentChunkIndex = 0;
-      isSpeaking = false;
+      isPlaying = false;
       currentBookId = null;
       elements.playerSection.classList.add('hidden');
       elements.librarySection.classList.remove('hidden');
@@ -432,6 +410,7 @@
         saveBooks();
       }
       window.speechSynthesis.cancel();
+      isPlaying = false;
       elements.playerSection.classList.add('hidden');
       elements.librarySection.classList.remove('hidden');
       updateBooksList();
@@ -447,33 +426,46 @@
 
     elements.searchInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
-        const searchTerm = elements.searchInput.value.toLowerCase();
+        const searchTerm = elements.searchInput.value.toLowerCase().trim();
+        if (!searchTerm) return;
+        
         const pdfTextLower = pdfText.toLowerCase();
         const foundIndex = pdfTextLower.indexOf(searchTerm);
         
         if (foundIndex !== -1) {
           let charCount = 0;
+          let targetChunk = -1;
+          
           for (let i = 0; i < chunks.length; i++) {
-            charCount += chunks[i].length;
-            if (charCount >= foundIndex) {
-              currentChunkIndex = i;
-              updateProgress();
-              window.speechSynthesis.cancel();
-              setTimeout(() => {
-                speakChunk(currentChunkIndex);
-                alert('Se encontró: ' + searchTerm + '\n¡Comenzando a leer!');
-              }, 100);
-              elements.searchInput.value = '';
+            if (charCount + chunks[i].length > foundIndex) {
+              targetChunk = i;
               break;
             }
+            charCount += chunks[i].length;
+          }
+          
+          if (targetChunk !== -1) {
+            currentChunkIndex = targetChunk;
+            updateProgress();
+            window.speechSynthesis.cancel();
+            setTimeout(() => {
+              speakChunk(currentChunkIndex);
+            }, 50);
+            elements.searchInput.value = '';
           }
         } else {
-          alert('No se encontró: ' + searchTerm);
+          alert('No se encontró: "' + searchTerm + '"');
         }
       }
     });
 
-    // Initialize
+    window.addEventListener('beforeunload', () => {
+      if (currentBookId && books[currentBookId]) {
+        books[currentBookId].currentChunkIndex = currentChunkIndex;
+        saveBooks();
+      }
+    });
+
     loadBooks();
   </script>
 </body>
