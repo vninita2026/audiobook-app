@@ -340,7 +340,6 @@
         }
       };
 
-      window.speechSynthesis.cancel();
       window.speechSynthesis.speak(utterance);
     }
 
@@ -431,6 +430,8 @@
 
     elements.searchInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
+        e.preventDefault();
+        
         const searchTerm = elements.searchInput.value.toLowerCase().trim();
         if (!searchTerm) return;
         
@@ -438,30 +439,28 @@
         const foundIndex = pdfTextLower.indexOf(searchTerm);
         
         if (foundIndex !== -1) {
+          // Encontrar el chunk correcto
           let charCount = 0;
-          let targetChunk = -1;
-          
           for (let i = 0; i < chunks.length; i++) {
-            if (charCount + chunks[i].length > foundIndex) {
-              targetChunk = i;
+            if (charCount <= foundIndex && foundIndex < charCount + chunks[i].length) {
+              currentChunkIndex = i;
               break;
             }
             charCount += chunks[i].length;
           }
           
-          if (targetChunk !== -1) {
-            currentChunkIndex = targetChunk;
-            isPlaying = false;
-            updateProgress();
-            window.speechSynthesis.cancel();
-            setTimeout(() => {
-              speakChunk(currentChunkIndex);
-            }, 100);
-            elements.searchInput.value = '';
-            alert('Encontrado: "' + searchTerm + '"\n¡Comenzando a leer!');
-          }
+          updateProgress();
+          window.speechSynthesis.cancel();
+          isPlaying = false;
+          
+          setTimeout(() => {
+            speakChunk(currentChunkIndex);
+          }, 50);
+          
+          elements.searchInput.value = '';
         } else {
           alert('No se encontró: "' + searchTerm + '"');
+          elements.searchInput.value = '';
         }
       }
     });
