@@ -19,6 +19,19 @@
     .upload-text { color: #374151; font-weight: 500; margin-bottom: 4px; }
     .upload-sub { color: #9ca3af; font-size: 13px; }
     .hidden { display: none !important; }
+    .books-list { background: white; border-radius: 12px; border: 1px solid #e5e7eb; margin-bottom: 20px; padding: 0; }
+    .book-item { padding: 16px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s; }
+    .book-item:hover { background: #f9fafb; }
+    .book-item:last-child { border-bottom: none; }
+    .book-item.active { background: #eff6ff; }
+    .book-info { flex: 1; }
+    .book-name { font-weight: 500; color: #111; }
+    .book-progress { font-size: 12px; color: #999; margin-top: 4px; }
+    .book-actions { display: flex; gap: 8px; }
+    .btn-select { padding: 6px 12px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .btn-select:hover { background: #1d4ed8; }
+    .btn-delete { padding: 6px 12px; background: #fee2e2; color: #dc2626; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .btn-delete:hover { background: #fecaca; }
     .file-info { background: white; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb; margin-bottom: 20px; }
     .file-label { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
     .file-name { font-size: 18px; font-weight: 500; color: #111; }
@@ -28,6 +41,7 @@
     .progress-percent { font-family: monospace; font-size: 12px; font-weight: 600; color: #666; }
     .progress-bar { width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; }
     .progress-fill { height: 100%; background: linear-gradient(90deg, #2563eb, #3b82f6); transition: width 0.3s; }
+    .char-info { font-size: 12px; color: #999; margin-top: 8px; font-family: monospace; }
     .controls { background: white; border-radius: 12px; padding: 32px; border: 1px solid #e5e7eb; }
     .playback-controls { display: flex; justify-content: center; gap: 16px; margin-bottom: 24px; }
     .btn-skip { padding: 12px; background: #f3f4f6; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s; color: #374151; font-size: 14px; }
@@ -39,6 +53,7 @@
     .slider-group label { font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px; display: flex; justify-content: space-between; }
     .slider-value { font-family: monospace; font-size: 12px; color: #666; }
     input[type="range"] { width: 100%; height: 6px; border-radius: 3px; background: #e5e7eb; outline: none; accent-color: #2563eb; cursor: pointer; }
+    input[type="text"] { width: 100%; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 12px; }
     .btn-change { width: 100%; padding: 12px; background: #f3f4f6; border: none; border-radius: 8px; color: #374151; font-weight: 500; cursor: pointer; transition: all 0.2s; }
     .btn-change:hover { background: #e5e7eb; }
     .preview { background: white; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb; margin-top: 32px; }
@@ -48,22 +63,32 @@
 </head>
 <body>
   <div class="container">
-    <!-- Upload Section -->
-    <div id="uploadSection">
+    <!-- Library Section -->
+    <div id="librarySection">
       <div class="header">
-        <h1>Audiobook</h1>
-        <p>Escucha tus PDFs mientras manejas</p>
+        <h1>Audiobook Library</h1>
+        <p>Tus libros guardados</p>
       </div>
-      <label class="upload-area">
-        <input type="file" id="pdfInput" accept=".pdf">
-        <div class="upload-icon">📄</div>
-        <div class="upload-text">Arrastra tu PDF aqui o haz clic</div>
-        <div class="upload-sub">Hasta 50MB</div>
-      </label>
+
+      <div class="books-list" id="booksList"></div>
+
+      <div style="margin-bottom: 20px;">
+        <p style="color: #666; font-size: 14px; margin-bottom: 12px;">Agregar nuevo libro:</p>
+        <label class="upload-area">
+          <input type="file" id="pdfInput" accept=".pdf">
+          <div class="upload-icon">📄</div>
+          <div class="upload-text">Arrastra tu PDF aqui o haz clic</div>
+          <div class="upload-sub">Hasta 50MB</div>
+        </label>
+      </div>
     </div>
 
     <!-- Player Section -->
     <div id="playerSection" class="hidden">
+      <div style="margin-bottom: 16px;">
+        <button id="backToLibrary" class="btn-change">← Volver a la biblioteca</button>
+      </div>
+
       <div class="file-info">
         <div class="file-label">Leyendo</div>
         <div class="file-name" id="fileName"></div>
@@ -77,6 +102,9 @@
         <div class="progress-bar">
           <div class="progress-fill" id="progressFill" style="width: 0%"></div>
         </div>
+        <div class="char-info">
+          Carácter: <span id="charCount">0</span> de <span id="totalChars">0</span>
+        </div>
       </div>
 
       <div class="controls">
@@ -88,11 +116,8 @@
 
         <div class="sliders">
           <div class="slider-group">
-            <label>
-              <span>Saltar a carácter</span>
-              <span class="slider-value" id="jumpValue">0</span>
-            </label>
-            <input type="number" id="jumpInput" min="0" placeholder="Ej: 50000" style="width: 100%; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-family: monospace; margin-bottom: 12px;">
+            <label>Buscar en el libro</label>
+            <input type="text" id="searchInput" placeholder="Ej: introducción, capítulo 3, etc.">
           </div>
 
           <div class="slider-group">
@@ -127,6 +152,8 @@
   <script>
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+    let books = {}; // { bookId: { name, text, chunks, currentChunkIndex } }
+    let currentBookId = null;
     let pdfText = '';
     let chunks = [];
     let currentChunkIndex = 0;
@@ -134,9 +161,10 @@
     let utterance = null;
 
     const elements = {
-      uploadSection: document.getElementById('uploadSection'),
+      librarySection: document.getElementById('librarySection'),
       playerSection: document.getElementById('playerSection'),
       pdfInput: document.getElementById('pdfInput'),
+      booksList: document.getElementById('booksList'),
       fileName: document.getElementById('fileName'),
       progressFill: document.getElementById('progressFill'),
       progressPercent: document.getElementById('progressPercent'),
@@ -144,29 +172,95 @@
       skipBack: document.getElementById('skipBack'),
       skipForward: document.getElementById('skipForward'),
       changeBtn: document.getElementById('changeBtn'),
+      backToLibrary: document.getElementById('backToLibrary'),
       speedSlider: document.getElementById('speedSlider'),
       speedValue: document.getElementById('speedValue'),
       volumeSlider: document.getElementById('volumeSlider'),
       volumeValue: document.getElementById('volumeValue'),
-      preview: document.getElementById('preview')
+      searchInput: document.getElementById('searchInput'),
+      preview: document.getElementById('preview'),
+      charCount: document.getElementById('charCount'),
+      totalChars: document.getElementById('totalChars')
     };
 
-    // Load saved data
-    function loadSavedData() {
-      const saved = localStorage.getItem('audiobookData');
+    // Load books from localStorage
+    function loadBooks() {
+      const saved = localStorage.getItem('audiobookLibrary');
       if (saved) {
         try {
-          const data = JSON.parse(saved);
-          pdfText = data.text;
-          chunks = data.chunks;
-          elements.fileName.textContent = data.fileName;
-          elements.preview.textContent = pdfText.substring(0, 500) + (pdfText.length > 500 ? '...' : '');
-          showPlayer();
+          books = JSON.parse(saved);
         } catch (e) {
-          console.error('Error loading data:', e);
+          console.error('Error loading books:', e);
+          books = {};
         }
       }
+      updateBooksList();
     }
+
+    // Save books to localStorage
+    function saveBooks() {
+      localStorage.setItem('audiobookLibrary', JSON.stringify(books));
+    }
+
+    // Update books list UI
+    function updateBooksList() {
+      elements.booksList.innerHTML = '';
+      if (Object.keys(books).length === 0) {
+        elements.booksList.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">No hay libros guardados</div>';
+        return;
+      }
+
+      Object.entries(books).forEach(([bookId, book]) => {
+        const isActive = bookId === currentBookId;
+        const progress = Math.round((book.currentChunkIndex / book.chunks.length) * 100) || 0;
+        const html = `
+          <div class="book-item ${isActive ? 'active' : ''}">
+            <div class="book-info">
+              <div class="book-name">${book.name}</div>
+              <div class="book-progress">Progreso: ${progress}%</div>
+            </div>
+            <div class="book-actions">
+              <button class="btn-select" onclick="selectBook('${bookId}')">Leer</button>
+              <button class="btn-delete" onclick="deleteBook('${bookId}')">Borrar</button>
+            </div>
+          </div>
+        `;
+        elements.booksList.innerHTML += html;
+      });
+    }
+
+    // Select a book to read
+    window.selectBook = function(bookId) {
+      if (!books[bookId]) return;
+      
+      currentBookId = bookId;
+      const book = books[bookId];
+      pdfText = book.text;
+      chunks = book.chunks;
+      currentChunkIndex = book.currentChunkIndex;
+
+      elements.fileName.textContent = book.name;
+      elements.preview.textContent = pdfText.substring(0, 500) + (pdfText.length > 500 ? '...' : '');
+      elements.totalChars.textContent = pdfText.length.toLocaleString();
+      updateProgress();
+
+      elements.librarySection.classList.add('hidden');
+      elements.playerSection.classList.remove('hidden');
+    };
+
+    // Delete a book
+    window.deleteBook = function(bookId) {
+      if (confirm('¿Borrar este libro?')) {
+        delete books[bookId];
+        saveBooks();
+        if (currentBookId === bookId) {
+          currentBookId = null;
+          elements.playerSection.classList.add('hidden');
+          elements.librarySection.classList.remove('hidden');
+        }
+        updateBooksList();
+      }
+    };
 
     // Create chunks
     function createChunks(text) {
@@ -205,27 +299,23 @@
           fullText += pageText + '\n\n';
         }
 
-        pdfText = fullText;
-        chunks = createChunks(fullText);
-        currentChunkIndex = 0;
+        const bookId = Date.now().toString();
+        books[bookId] = {
+          name: file.name.replace('.pdf', ''),
+          text: fullText,
+          chunks: createChunks(fullText),
+          currentChunkIndex: 0
+        };
 
-        elements.fileName.textContent = file.name;
-        elements.preview.textContent = pdfText.substring(0, 500) + (pdfText.length > 500 ? '...' : '');
-
-        const dataToSave = { text: pdfText, chunks: chunks, fileName: file.name };
-        localStorage.setItem('audiobookData', JSON.stringify(dataToSave));
-
-        showPlayer();
+        saveBooks();
+        updateBooksList();
+        selectBook(bookId);
+        elements.pdfInput.value = '';
       } catch (error) {
         console.error('Error:', error);
         alert('Error cargando PDF');
       }
     });
-
-    function showPlayer() {
-      elements.uploadSection.classList.add('hidden');
-      elements.playerSection.classList.remove('hidden');
-    }
 
     function speakChunk(chunkIndex) {
       if (chunks.length === 0 || chunkIndex >= chunks.length) {
@@ -254,6 +344,10 @@
           updateProgress();
           updatePlayButton();
         }
+        if (currentBookId && books[currentBookId]) {
+          books[currentBookId].currentChunkIndex = currentChunkIndex;
+          saveBooks();
+        }
       };
 
       utterance.onpause = () => {
@@ -269,6 +363,12 @@
       const percent = chunks.length > 0 ? (currentChunkIndex / chunks.length) * 100 : 0;
       elements.progressFill.style.width = percent + '%';
       elements.progressPercent.textContent = Math.round(percent) + '%';
+      
+      let charCount = 0;
+      for (let i = 0; i < currentChunkIndex; i++) {
+        charCount += chunks[i].length;
+      }
+      elements.charCount.textContent = charCount.toLocaleString();
     }
 
     function updatePlayButton() {
@@ -311,53 +411,70 @@
     });
 
     elements.changeBtn.addEventListener('click', () => {
+      if (currentBookId && books[currentBookId]) {
+        books[currentBookId].currentChunkIndex = currentChunkIndex;
+        saveBooks();
+      }
       window.speechSynthesis.cancel();
       pdfText = '';
       chunks = [];
       currentChunkIndex = 0;
       isSpeaking = false;
-      localStorage.removeItem('audiobookData');
-      elements.uploadSection.classList.remove('hidden');
+      currentBookId = null;
       elements.playerSection.classList.add('hidden');
-      elements.pdfInput.value = '';
+      elements.librarySection.classList.remove('hidden');
+      updateBooksList();
+    });
+
+    elements.backToLibrary.addEventListener('click', () => {
+      if (currentBookId && books[currentBookId]) {
+        books[currentBookId].currentChunkIndex = currentChunkIndex;
+        saveBooks();
+      }
+      window.speechSynthesis.cancel();
+      elements.playerSection.classList.add('hidden');
+      elements.librarySection.classList.remove('hidden');
+      updateBooksList();
     });
 
     elements.speedSlider.addEventListener('input', (e) => {
       elements.speedValue.textContent = e.target.value + 'x';
     });
 
-    elements.jumpInput = document.getElementById('jumpInput');
-    if (elements.jumpInput) {
-      elements.jumpInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          const charPos = parseInt(elements.jumpInput.value);
-          if (charPos >= 0 && charPos <= pdfText.length) {
-            // Encontrar el chunk correspondiente
-            let charCount = 0;
-            for (let i = 0; i < chunks.length; i++) {
-              charCount += chunks[i].length;
-              if (charCount >= charPos) {
-                currentChunkIndex = i;
-                updateProgress();
-                if (isSpeaking) {
-                  window.speechSynthesis.cancel();
-                  setTimeout(() => speakChunk(currentChunkIndex), 100);
-                }
-                elements.jumpInput.value = '';
-                break;
-              }
-            }
-          }
-        }
-      });
-    }
-
     elements.volumeSlider.addEventListener('input', (e) => {
       elements.volumeValue.textContent = Math.round(e.target.value * 100) + '%';
     });
 
+    elements.searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        const searchTerm = elements.searchInput.value.toLowerCase();
+        const pdfTextLower = pdfText.toLowerCase();
+        const foundIndex = pdfTextLower.indexOf(searchTerm);
+        
+        if (foundIndex !== -1) {
+          let charCount = 0;
+          for (let i = 0; i < chunks.length; i++) {
+            charCount += chunks[i].length;
+            if (charCount >= foundIndex) {
+              currentChunkIndex = i;
+              updateProgress();
+              if (isSpeaking) {
+                window.speechSynthesis.cancel();
+                setTimeout(() => speakChunk(currentChunkIndex), 100);
+              }
+              alert('Se encontró: ' + searchTerm);
+              elements.searchInput.value = '';
+              break;
+            }
+          }
+        } else {
+          alert('No se encontró: ' + searchTerm);
+        }
+      }
+    });
+
     // Initialize
-    loadSavedData();
+    loadBooks();
   </script>
 </body>
 </html>
