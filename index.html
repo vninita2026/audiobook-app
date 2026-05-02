@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audiobook - Lee tus PDFs en voz alta</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;700&family=Geist:wght@300;400;500;600;700&display=swap');
+    
+    * {
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    .mono {
+      font-family: 'Geist Mono', monospace;
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-slate-100">
+  <div id="root"></div>
+
+  <script>
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const { useState, useRef, useEffect } = React;
+
+    function PDFAudiobook() {
+      const [pdfText, setPdfText] = useState('');
+      const [isLoading, setIsLoading] = useState(false);
+      const [fileName, setFileName] = useState('');
+      const [isSpeaking, setIsSpeaking] = useState(false);
+      const [speechRate, setSpeechRate] = useState(1);
+      const [pitch, setPitch] = useState(1);
+      const [volume, setVolume] = useState(1);
+      const [currentCharIndex, setCurrentCharIndex] = useState(0);
+      const [chunks, setChunks] = useState([]);
+      const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
+      const synthRef = useRef(null);
+      const utteranceRef = useRef(null);
+      const chunksRef = useRef([]);
+      const currentChunkRef = useRef(0);
+
+      // Cargar datos guardados del localStorage al montar
+      useEffect(() => {
+        const savedData = localStorage.getItem('audiobookData');
+        if (savedData) {
+          try {
+            const { text, chunks: savedChunks, fileName: savedFileName } = JSON.parse(savedData);
+            setPdfText(text);
+            setChunks(savedChunks);
+            chunksRef.current = savedChunks;
+            setFileName(savedFileName);
+          } catch (e) {
+            console.error('Error cargando datos guardados:', e);
+          }
+        }
+
+        return () => {
+          window.speechSynthesis.cancel();
+        };
+      }, []);
+
+      // Guardar en localStorage cuando cambia el PDF
+      useEffect(() => {
+        if (pdfText && chunks.length > 0 && fileName) {
+          const dataToSave = {
+            text: pdfText,
+            chunks: chunks,
+            fileName: fileName
+          };
+          localStorage.setItem('audiobookData', JSON.stringify(dataToSave));
+        }
+      }, [pdfText, chunks, fileName]);
+
+      const CHUNK_SIZE = 25000;
+      const createChunks = (text) => {
+        const chunkArray = [];
+        let currentPos = 0;
+        
+        while (currentPos < text.length) {
+          let endPos = Math.min(currentPos + CHUNK_SIZE, text.length);
+          
+          if (endPos < text.length) {
+            let searchEnd = endPos;
+            while (searchEnd > currentPos && text[searchEnd] !== '.' && text[searchEnd] !== '\n') {
+              searchEnd--;
+            }
+            if (searchEnd > currentPos) {
+              endPos = searchEnd + 1;
+            }
+          }
+          
+          chunkArray.push(text.substring(currentPos, endPos));
+          currentPos = endPos;
+        }
+        
+        return chunkArray;
+      };
+
+      const handlePdfUpload = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        setIsLoading(true);
+        setFileName(file.name);
+
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await window.pdfjsLib.getDocument(arrayBuffer).promise;
+          let fullText = '';
+
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map((item) => item.str).join(' ');
+            fullText += pageText + '\n\n';
+          }
+
+          setPdfText(fullText);
+          const textChunks = createChunks(fullText);
+          setChunks(textChunks);
+          chunksRef.current = textChunks;
+          setCurrentCharIndex(0);
+          setCurrentChunkIndex(0);
+          currentChunkRef.current = 0;
+          setIsLoading(false);
+        } catch (error) {
+          console.error('Error procesando PDF:', error);
+          alert('Error al cargar el PDF. Intenta con otro archivo.');
+          setIsLoading(false);
+        }
+      };
+
+      const speakChunk = (chunkIndex) => {
+        if (chunksRef.current.length === 0 || chunkIndex >= chunksRef.current.length) {
+          setIsSpeaking(false);
+          return;
+        }
+
+        const textToSpeak = chunksRef.current[chunkIndex];
+        
+        utteranceRef.current = new SpeechSynthesisUtterance(textToSpeak);
+        utteranceRef.current.rate = speechRate;
+        utteranceRef.current.pitch = pitch;
+        utteranceRef.current.volume = volume;
+
+        utteranceRef.current.onstart = () => {
+          setIsSpeaking(true);
+          setCurrentChunkIndex(chunkIndex);
+          currentChunkRef.current = chunkIndex;
+        };
+
+        utteranceRef.current.onend = () => {
+          if (chunkIndex < chunksRef.current.length - 1) {
+            setTimeout(() => speakChunk(chunkIndex + 1), 100);
+          } else {
+            setIsSpeaking(false);
+            currentChunkRef.current = 0;
+            setCurrentChunkIndex(0);
+          }
+        };
+
+        utteranceRef.current.onpause = () => {
+          setIsSpeaking(false);
+        };
+
+        utteranceRef.current.onerror = (e) => {
+          console.error('Error en síntesis:', e);
+          setIsSpeaking(false);
+        };
+
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utteranceRef.current);
+      };
+
+      const startSpeaking = () => {
+        if (chunksRef.current.length === 0) return;
+
+        const synth = window.speechSynthesis;
+        
+        if (synth.paused) {
+          synth.resume();
+          setIsSpeaking(true);
+          return;
+        }
+        
+        if (synth.speaking) {
+          return;
+        }
+        
+        speakChunk(currentChunkRef.current);
+      };
+
+      const pauseSpeaking = () => {
+        const synth = window.speechSynthesis;
+        if (synth.speaking) {
+          synth.pause();
+          setIsSpeaking(false);
+        }
+      };
+
+      const stopSpeaking = () => {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+        setCurrentChunkIndex(0);
+        currentChunkRef.current = 0;
+      };
+
+      const skipBackward = () => {
+        const newIndex = Math.max(0, currentChunkRef.current - 1);
+        currentChunkRef.current = newIndex;
+        setCurrentChunkIndex(newIndex);
+        if (isSpeaking) {
+          window.speechSynthesis.cancel();
+          setTimeout(() => speakChunk(newIndex), 100);
+        }
+      };
+
+      const skipForward = () => {
+        const newIndex = Math.min(chunksRef.current.length - 1, currentChunkRef.current + 1);
+        currentChunkRef.current = newIndex;
+        setCurrentChunkIndex(newIndex);
+        if (isSpeaking) {
+          window.speechSynthesis.cancel();
+          setTimeout(() => speakChunk(newIndex), 100);
+        }
+      };
+
+      const progressPercent = chunks.length > 0 ? (currentChunkIndex / chunks.length) * 100 : 0;
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6 md:p-10">
+          <div className="max-w-3xl mx-auto">
+            {/* Header */}
+            <div className="mb-10">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg flex items-center justify-center">
+                  <span className="text-white text-xl">🔊</span>
+                </div>
+                <h1 className="text-4xl font-light tracking-tight text-slate-900">Audiobook</h1>
+              </div>
+              <p className="text-slate-500 text-sm">Escucha tus PDFs mientras manejas</p>
+            </div>
+
+            {/* Upload Area */}
+            {!pdfText ? (
+              <div className="bg-white rounded-xl border-2 border-dashed border-slate-200 p-12 text-center hover:border-slate-300 transition-colors cursor-pointer relative overflow-hidden group">
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handlePdfUpload}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  disabled={isLoading}
+                />
+                
+                <div className="relative z-10 pointer-events-none">
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-50 to-slate-50 rounded-lg mx-auto mb-4 flex items-center justify-center group-hover:from-blue-100 transition-colors">
+                    <span className="text-3xl">📤</span>
+                  </div>
+                  
+                  {isLoading ? (
+                    <div>
+                      <p className="text-slate-600 font-medium mb-2">Cargando PDF...</p>
+                      <p className="text-slate-400 text-sm">Esto puede tomar unos segundos</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-slate-600 font-medium mb-1">Arrastra tu PDF aquí o haz clic</p>
+                      <p className="text-slate-400 text-sm">Soporta archivos hasta 50MB</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Current File */}
+                <div className="bg-white rounded-xl p-6 mb-6 border border-slate-200">
+                  <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">Leyendo</p>
+                  <p className="text-lg font-medium text-slate-900 truncate">{fileName}</p>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="bg-white rounded-xl p-6 mb-6 border border-slate-200">
+                  <div className="mb-3 flex justify-between items-center">
+                    <p className="text-xs text-slate-500 uppercase tracking-widest">Progreso</p>
+                    <p className="mono text-xs font-medium text-slate-600">
+                      {Math.round(progressPercent)}%
+                    </p>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-blue-600 to-blue-500 h-full transition-all duration-300"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Controls */}
+                <div className="bg-white rounded-xl p-8 border border-slate-200 space-y-6">
+                  {/* Playback Controls */}
+                  <div className="flex items-center justify-center gap-4">
+                    <button
+                      onClick={skipBackward}
+                      className="p-3 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors text-slate-700"
+                      title="Retroceder"
+                    >
+                      ⏮️
+                    </button>
+
+                    {!isSpeaking ? (
+                      <button
+                        onClick={startSpeaking}
+                        className="p-4 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all text-white shadow-md hover:shadow-lg"
+                      >
+                        ▶️
+                      </button>
+                    ) : (
+                      <button
+                        onClick={pauseSpeaking}
+                        className="p-4 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all text-white shadow-md hover:shadow-lg"
+                      >
+                        ⏸️
+                      </button>
+                    )}
+
+                    <button
+                      onClick={skipForward}
+                      className="p-3 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors text-slate-700"
+                      title="Avanzar"
+                    >
+                      ⏭️
+                    </button>
+                  </div>
+
+                  <div className="h-px bg-slate-200" />
+
+                  {/* Sliders */}
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <label className="text-sm font-medium text-slate-700">Velocidad</label>
+                        <span className="mono text-xs font-medium text-slate-600">{speechRate.toFixed(1)}x</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="2"
+                        step="0.1"
+                        value={speechRate}
+                        onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-slate-200 rounded-full appearance-none cursor-pointer accent-blue-600"
+                      />
+                      <div className="flex justify-between text-xs text-slate-400 mt-1">
+                        <span>Lento</span>
+                        <span>Rápido</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <label className="text-sm font-medium text-slate-700">Volumen</label>
+                        <span className="mono text-xs font-medium text-slate-600">{Math.round(volume * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={volume}
+                        onChange={(e) => setVolume(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-slate-200 rounded-full appearance-none cursor-pointer accent-blue-600"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-slate-200" />
+
+                  {/* Change File Button */}
+                  <button
+                    onClick={() => {
+                      stopSpeaking();
+                      setPdfText('');
+                      setFileName('');
+                      setChunks([]);
+                      setCurrentChunkIndex(0);
+                      chunksRef.current = [];
+                      currentChunkRef.current = 0;
+                      localStorage.removeItem('audiobookData');
+                    }}
+                    className="w-full py-3 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors text-slate-700 font-medium text-sm"
+                  >
+                    Cambiar archivo
+                  </button>
+                </div>
+
+                {/* Text Preview */}
+                <div className="mt-8 bg-white rounded-xl p-6 border border-slate-200">
+                  <p className="text-xs text-slate-500 uppercase tracking-widest mb-4">Vista previa</p>
+                  <div className="mono text-sm text-slate-600 leading-relaxed max-h-40 overflow-y-auto">
+                    <p>
+                      {pdfText.substring(0, 500)}
+                      {pdfText.length > 500 ? '...' : ''}
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<PDFAudiobook />);
+  </script>
+</body>
+</html>

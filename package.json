@@ -1,0 +1,6 @@
+{
+  "name": "audiobook-app",
+  "version": "1.0.0",
+  "description": "Lee tus PDFs en voz alta mientras manejas",
+  "private": true
+}
