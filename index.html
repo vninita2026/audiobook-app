@@ -458,11 +458,11 @@
             if (charCount >= foundIndex) {
               currentChunkIndex = i;
               updateProgress();
-              if (isSpeaking) {
-                window.speechSynthesis.cancel();
-                setTimeout(() => speakChunk(currentChunkIndex), 100);
-              }
-              alert('Se encontró: ' + searchTerm);
+              window.speechSynthesis.cancel();
+              setTimeout(() => {
+                speakChunk(currentChunkIndex);
+                alert('Se encontró: ' + searchTerm + '\n¡Comenzando a leer!');
+              }, 100);
               elements.searchInput.value = '';
               break;
             }
