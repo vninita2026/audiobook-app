@@ -89,6 +89,14 @@
         <div class="sliders">
           <div class="slider-group">
             <label>
+              <span>Saltar a carácter</span>
+              <span class="slider-value" id="jumpValue">0</span>
+            </label>
+            <input type="number" id="jumpInput" min="0" placeholder="Ej: 50000" style="width: 100%; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-family: monospace; margin-bottom: 12px;">
+          </div>
+
+          <div class="slider-group">
+            <label>
               <span>Velocidad</span>
               <span class="slider-value" id="speedValue">1.0x</span>
             </label>
@@ -317,6 +325,32 @@
     elements.speedSlider.addEventListener('input', (e) => {
       elements.speedValue.textContent = e.target.value + 'x';
     });
+
+    elements.jumpInput = document.getElementById('jumpInput');
+    if (elements.jumpInput) {
+      elements.jumpInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          const charPos = parseInt(elements.jumpInput.value);
+          if (charPos >= 0 && charPos <= pdfText.length) {
+            // Encontrar el chunk correspondiente
+            let charCount = 0;
+            for (let i = 0; i < chunks.length; i++) {
+              charCount += chunks[i].length;
+              if (charCount >= charPos) {
+                currentChunkIndex = i;
+                updateProgress();
+                if (isSpeaking) {
+                  window.speechSynthesis.cancel();
+                  setTimeout(() => speakChunk(currentChunkIndex), 100);
+                }
+                elements.jumpInput.value = '';
+                break;
+              }
+            }
+          }
+        }
+      });
+    }
 
     elements.volumeSlider.addEventListener('input', (e) => {
       elements.volumeValue.textContent = Math.round(e.target.value * 100) + '%';
